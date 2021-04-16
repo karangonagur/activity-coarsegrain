@@ -1,6 +1,6 @@
 #ifndef _MY_HASHTABLE_H
 #define _MY_HASHTABLE_H
-
+#include <mutex>
 #include <functional>
 #include <iostream>
 #include <vector>
@@ -28,6 +28,10 @@ protected:
   int count;
   double loadFactor;
   std::vector<Node<K,V>*> table;
+  std::mutex m[224];
+  //mutable std::shared_time_mutex mutex_;
+  // std::condition_variable_any cond;
+  bool done = false;
 
   struct hashtable_iter : public dict_iter {
     MyHashtable& mt;
@@ -98,6 +102,10 @@ protected:
   }
 
 public:
+
+  int size(){
+    return capacity;
+  }
   /**
    * Returns the node at key
    * @param key key of node to get
@@ -106,13 +114,23 @@ public:
   virtual V get(const K& key) const {
     std::size_t index = std::hash<K>{}(key) % this->capacity;
     index = index < 0 ? index + this->capacity : index;
+    //int kth_lock = index/224;
+    // m[kth_lock].lock();
+    // mu.lock();
+    // cond.wait(mu, [&]() {return (done)||
+    // std::shared_lock<std::shared_time_mutex> lock(mutex_);
     const Node<K,V>* node = this->table[index];
 
     while (node != nullptr) {
-      if (node->key == key)
+      if (node->key == key){
+	//m[kth_lock].unlock();
+	//	mu.unlock();
 	      return node->value;
+      }
       node = node->next;
     }
+    //m[kth_lock].unlock();
+    // mu.unlock();
     return V();
   }
 
@@ -124,11 +142,17 @@ public:
   virtual void set(const K& key, const V& value) {
     std::size_t index = std::hash<K>{}(key) % this->capacity;
     index = index < 0 ? index + this->capacity : index;
+    int kth_lock = index/224;
+    m[kth_lock].lock(); 
+    //std::unique_lock<std::shared_time_mutex> lock(mutex_);
     Node<K,V>* node = this->table[index];
     
     while (node != nullptr) {
       if (node->key == key) {
 	      node->value = value;
+	      m[kth_lock].unlock();
+	      //cond.notify_one();
+	      // mu.unlock();
 	      return;
       }
       node = node->next;
@@ -138,6 +162,9 @@ public:
     node = new Node<K,V>(key, value);
     node->next = this->table[index];
     this->table[index] = node;
+    m[kth_lock].unlock();
+    //cond.notify_one();
+    //mu.unlock();
     this->count++;
     if (((double)this->count)/this->capacity > this->loadFactor) {
       this->resize(this->capacity * 2);
@@ -149,6 +176,7 @@ public:
    * @param key key of node to be deleted
    */
   virtual void deleteKey(const K& key) {
+    
   }
 
   MyHashtable(): MyHashtable(100000, 10.0) {}
